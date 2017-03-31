@@ -1,0 +1,1 @@
+# sz_grafika_hazi02
