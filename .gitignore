@@ -1,0 +1,6 @@
+Libs
+Programs/Skeleton/Skeleton.*
+Programs/Skeleton/Skeleton/Debug/*
+Programs/Skeleton/Skeleton/*
+
+!Programs/Skeleton/Skeleton/Skeleton.cpp
