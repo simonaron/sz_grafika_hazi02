@@ -1,43 +1,14 @@
 //=============================================================================================
-// Szamitogepes grafika hazi feladat keret. Ervenyes 2017-tol.
-// A //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// sorokon beluli reszben celszeru garazdalkodni, mert a tobbit ugyis toroljuk.
-// A beadott program csak ebben a fajlban lehet, a fajl 1 byte-os ASCII karaktereket tartalmazhat.
-// Tilos:
-// - mast "beincludolni", illetve mas konyvtarat hasznalni
-// - faljmuveleteket vegezni a printf-et kivéve
-// - new operatort hivni a lefoglalt adat korrekt felszabaditasa nelkul
-// - felesleges programsorokat a beadott programban hagyni
-// - felesleges kommenteket a beadott programba irni a forrasmegjelolest kommentjeit kiveve
+// Framework for the ray tracing homework
 // ---------------------------------------------------------------------------------------------
-// A feladatot ANSI C++ nyelvu forditoprogrammal ellenorizzuk, a Visual Studio-hoz kepesti elteresekrol
-// es a leggyakoribb hibakrol (pl. ideiglenes objektumot nem lehet referencia tipusnak ertekul adni)
-// a hazibeado portal ad egy osszefoglalot.
-// ---------------------------------------------------------------------------------------------
-// A feladatmegoldasokban csak olyan OpenGL/GLUT fuggvenyek hasznalhatok, amelyek az oran a feladatkiadasig elhangzottak 
-//
-// NYILATKOZAT
-// ---------------------------------------------------------------------------------------------
-// Nev    : 
+// Name    : 
 // Neptun : 
-// ---------------------------------------------------------------------------------------------
-// ezennel kijelentem, hogy a feladatot magam keszitettem, es ha barmilyen segitseget igenybe vettem vagy
-// mas szellemi termeket felhasznaltam, akkor a forrast es az atvett reszt kommentekben egyertelmuen jeloltem.
-// A forrasmegjeloles kotelme vonatkozik az eloadas foliakat es a targy oktatoi, illetve a
-// grafhazi doktor tanacsait kiveve barmilyen csatornan (szoban, irasban, Interneten, stb.) erkezo minden egyeb
-// informaciora (keplet, program, algoritmus, stb.). Kijelentem, hogy a forrasmegjelolessel atvett reszeket is ertem,
-// azok helyessegere matematikai bizonyitast tudok adni. Tisztaban vagyok azzal, hogy az atvett reszek nem szamitanak
-// a sajat kontribucioba, igy a feladat elfogadasarol a tobbi resz mennyisege es minosege alapjan szuletik dontes.
-// Tudomasul veszem, hogy a forrasmegjeloles kotelmenek megsertese eseten a hazifeladatra adhato pontokat
-// negativ elojellel szamoljak el es ezzel parhuzamosan eljaras is indul velem szemben.
 //=============================================================================================
 
 #define _USE_MATH_DEFINES
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-
-#include <vector>
 
 #if defined(__APPLE__)
 #include <GLUT/GLUT.h>
@@ -51,14 +22,47 @@
 #include <GL/freeglut.h>	// must be downloaded unless you have an Apple
 #endif
 
-
 const unsigned int windowWidth = 600, windowHeight = 600;
-
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// You are supposed to modify the code from here...
 
 // OpenGL major and minor versions
 int majorVersion = 3, minorVersion = 3;
+
+struct vec3 {
+	float x, y, z;
+
+	vec3(float x0 = 0, float y0 = 0, float z0 = 0) { x = x0; y = y0; z = z0; }
+
+	vec3 operator*(float a) const { return vec3(x * a, y * a, z * a); }
+
+	vec3 operator+(const vec3& v) const {
+		return vec3(x + v.x, y + v.y, z + v.z);
+	}
+	vec3 operator-(const vec3& v) const {
+		return vec3(x - v.x, y - v.y, z - v.z);
+	}
+	vec3 operator*(const vec3& v) const {
+		return vec3(x * v.x, y * v.y, z * v.z);
+	}
+	vec3 operator-() const {
+		return vec3(-x, -y, -z);
+	}
+	vec3 normalize() const {
+		return (*this) * (1 / (Length() + 0.000001));
+	}
+	float Length() const { return sqrtf(x * x + y * y + z * z); }
+
+	operator float*() { return &x; }
+};
+
+float dot(const vec3& v1, const vec3& v2) {
+	return (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z);
+}
+
+vec3 cross(const vec3& v1, const vec3& v2) {
+	return vec3(v1.y * v2.z - v1.z * v2.y, v1.z * v2.x - v1.x * v2.z, v1.x * v2.y - v1.y * v2.x);
+}
+
+
 
 void getErrorInfo(unsigned int handle) {
 	int logLen;
@@ -93,135 +97,258 @@ void checkLinking(unsigned int program) {
 }
 
 // vertex shader in GLSL
-const char * vertexSource = R"(
+const char *vertexSource = R"(
 	#version 330
     precision highp float;
 
 	layout(location = 0) in vec2 vertexPosition;	// Attrib Array 0
-	layout(location = 1) in vec3 vertexColor;	    // Attrib Array 1
-	out vec3 color;									// output attribute
-	out 
+
+	out vec2 texcoord;
 
 	void main() {
-		color = vertexColor;														// copy color from input to output
+		texcoord = (vertexPosition + vec2(1, 1))/2;							// -1,1 to 0,1
 		gl_Position = vec4(vertexPosition.x, vertexPosition.y, 0, 1); 		// transform to clipping space
 	}
 )";
 
 // fragment shader in GLSL
-const char * fragmentSource = R"(
+const char *fragmentSource = R"(
 	#version 330
     precision highp float;
 
-	in vec3 color;				// variable input: interpolated color of vertex shader
+	uniform sampler2D textureUnit;
+	in  vec2 texcoord;			// interpolated texture coordinates
+
 	out vec4 fragmentColor;		// output that goes to the raster memory as told by glBindFragDataLocation
-	
-	in vec2 texCoord;
-	uniform sampler2D texture;
 
 	void main() {
-		fragmentColor =	texture2D( texture, texCoord ); 
-		//fragmentColor = vec4(color, 1); // extend RGB to RGBA
+		fragmentColor = texture(textureUnit, texcoord); 
 	}
 )";
 
-// row-major matrix 4x4
-struct mat4 {
-	float m[4][4];
-public:
-	mat4() {}
-	mat4(float m00, float m01, float m02, float m03,
-		float m10, float m11, float m12, float m13,
-		float m20, float m21, float m22, float m23,
-		float m30, float m31, float m32, float m33) {
-		m[0][0] = m00; m[0][1] = m01; m[0][2] = m02; m[0][3] = m03;
-		m[1][0] = m10; m[1][1] = m11; m[1][2] = m12; m[1][3] = m13;
-		m[2][0] = m20; m[2][1] = m21; m[2][2] = m22; m[2][3] = m23;
-		m[3][0] = m30; m[3][1] = m31; m[3][2] = m32; m[3][3] = m33;
-	}
 
-	mat4 operator*(const mat4& right) {
-		mat4 result;
-		for (int i = 0; i < 4; i++) {
-			for (int j = 0; j < 4; j++) {
-				result.m[i][j] = 0;
-				for (int k = 0; k < 4; k++) result.m[i][j] += m[i][k] * right.m[k][j];
-			}
-		}
-		return result;
-	}
-	operator float*() { return &m[0][0]; }
-};
-
-
-// 3D point in homogeneous coordinates
 struct vec4 {
 	float v[4];
 
 	vec4(float x = 0, float y = 0, float z = 0, float w = 1) {
 		v[0] = x; v[1] = y; v[2] = z; v[3] = w;
 	}
+};
 
-	vec4 operator*(const mat4& mat) {
-		vec4 result;
-		for (int j = 0; j < 4; j++) {
-			result.v[j] = 0;
-			for (int i = 0; i < 4; i++) result.v[j] += v[i] * mat.m[i][j];
-		}
-		return result;
+class Vector {
+public:
+	const float x;
+	const float y;
+	const float z;
+	const float w;
+	Vector(float x, float y, float z, float w = 1):x(x/w),y(y/w),z(z/w),w(1) {}
+	Vector(vec4 vector):x(vector.v[0]), y(vector.v[1]), z(vector.v[2]), w(vector.v[3]) {}
+	const Vector operator+ (const Vector& v2) const {
+		return Vector(x + v2.x, y + v2.y, z + v2.z, 1);
+	}
+	const Vector operator- (const Vector& v2) const {
+		return Vector(x - v2.x, y - v2.y, z - v2.z, 1);
+	}
+	const Vector operator* (const float& f) const {
+		return Vector(x * f, y * f, z * f, 1);
+	}
+	const Vector operator/ (const float& f) const {
+		return Vector(x, y, z, f);
+	}
+	const Vector operator% (const Vector& v2) const {
+		return Vector(y*v2.z- z*v2.y, z*v2.x - x*v2.z, x*v2.y - y*v2.x, 1);
+	}
+	const float operator* (const Vector& v2) const {
+		return x*v2.x + y*v2.y + z*v2.z;
+	}
+
+	const vec4 operator()() {
+		return vec4(x, y, z, w);
+	}
+
+	const float length() const {
+		return sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2));
+	}
+
+	const Vector normalize() const {
+		return Vector(x, y, z, length());
 	}
 };
 
 // handle of the shader program
 unsigned int shaderProgram;
 
-class Camera {
-	unsigned int vao;	// vertex array object id
-	float sx, sy;		// scaling
-	float wTx, wTy;		// translation
+class FullScreenTexturedQuad {
+	unsigned int vao, textureId;	// vertex array object id and texture id
 public:
-	Camera() {
+	void Create(vec3 image[windowWidth * windowHeight]) {
 		glGenVertexArrays(1, &vao);	// create 1 vertex array object
 		glBindVertexArray(vao);		// make it active
 
-		unsigned int vbo[2];		// vertex buffer objects
-		glGenBuffers(2, &vbo[0]);	// Generate 2 vertex buffer objects
+		unsigned int vbo;		// vertex buffer objects
+		glGenBuffers(1, &vbo);	// Generate 1 vertex buffer objects
 
-		// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); // make it active, it is an array
-		static float vertexCoords[] = {-1, -1, -1, 1, 1, 1, 1, -1};	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER,      // copy to the GPU
-			         sizeof(vertexCoords), // number of the vbo in bytes
-					 vertexCoords,		   // address of the data array on the CPU
-					 GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
-		// Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
-		glEnableVertexAttribArray(0); 
-		// Data organization of Attribute Array 0 
-		glVertexAttribPointer(0,			// Attribute Array 0
-			                  2, GL_FLOAT,  // components/attribute, component type
-							  GL_FALSE,		// not in fixed point format, do not normalized
-							  0, NULL);     // stride and offset: it is tightly packed
+								// vertex coordinates: vbo[0] -> Attrib Array 0 -> vertexPosition of the vertex shader
+		glBindBuffer(GL_ARRAY_BUFFER, vbo); // make it active, it is an array
+		static float vertexCoords[] = { -1, -1, 1, -1, -1, 1,
+			1, -1, 1, 1, -1, 1 };	// two triangles forming a quad
+		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexCoords), vertexCoords, GL_STATIC_DRAW);	   // copy to that part of the memory which is not modified 
+																							   // Map Attribute Array 0 to the current bound vertex buffer (vbo[0])
+		glEnableVertexAttribArray(0);
+		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, NULL);     // stride and offset: it is tightly packed
 
-		// vertex colors: vbo[1] -> Attrib Array 1 -> vertexColor of the vertex shader
-		glBindBuffer(GL_ARRAY_BUFFER, vbo[1]); // make it active, it is an array
-		static float vertexColors[] = { 1, 0, 0,  0, 1, 0,  0, 0, 1,  1, 1, 1 };	// vertex data on the CPU
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertexColors), vertexColors, GL_STATIC_DRAW);	// copy to the GPU
+																	  // Create objects by setting up their vertex data on the GPU
+		glGenTextures(1, &textureId);  				// id generation
+		glBindTexture(GL_TEXTURE_2D, textureId);    // binding
 
-		// Map Attribute Array 1 to the current bound vertex buffer (vbo[1])
-		glEnableVertexAttribArray(1);  // Vertex position
-		// Data organization of Attribute Array 1
-		glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL); // Attribute Array 1, components/attribute, component type, normalize?, tightly packed
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, windowWidth, windowHeight, 0, GL_RGB, GL_FLOAT, image); // To GPU
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // sampling
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	}
 
 	void Draw() {
 		glBindVertexArray(vao);	// make the vao and its vbos active playing the role of the data source
-		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);	// draw a single triangle with vertices defined in vao
+		int location = glGetUniformLocation(shaderProgram, "textureUnit");
+		if (location >= 0) {
+			glUniform1i(location, 0);		// texture sampling unit is TEXTURE0
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, textureId);	// connect the texture to the sampler
+		}
+		glDrawArrays(GL_TRIANGLES, 0, 6);	// draw two triangles forming a quad
+	}
+};
+
+class Ray {
+public:
+	const Vector position;
+	const Vector orientation;
+
+	Ray(Vector position, Vector orientation):position(position),orientation(orientation) {}
+};
+
+class DotLight {
+	const Vector position;
+public:
+	DotLight(Vector position):position(position) {}
+	Vector getDirection(Vector to) {
+		return (position - to).normalize();
+	}
+	float getIntensity(Vector to) {
+		return (400000.0-pow((position - to).length(),2))/400000.0;
+	}
+};
+
+DotLight dotLight(Vector(100, 200, -300));
+float ambient = 0.1;
+
+class Hit {
+	const Vector position;
+	const Vector normal;
+	const Vector rayDir;
+	const float t;
+public:
+	Hit(float t, const Vector position = vec4(), const Vector normal = vec4(), const Vector rayDir = vec4())
+		:position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t) {
+	}
+	const vec3 getColor() const {
+		if (t > 0) {
+			Vector lightDir = dotLight.getDirection(position);
+			float lightIntensity = dotLight.getIntensity(position);
+
+			return vec3(1,1,1)*(ambient + (max((lightDir*normal),0))*lightIntensity);
+		}
+		else {
+			return vec3(0, 0, 0);
+		}
+	}
+};
+
+class Intersectable {
+public:
+	virtual const Hit intersect(const Ray& ray) const = 0;
+};
+
+class Sphere : public Intersectable {
+	const Vector position;
+	const float r;
+public:
+	Sphere(Vector position, float r):position(position),r(r) {}
+
+	const Hit intersect(const Ray& ray) const {
+		const Vector v = ray.orientation;
+		const Vector eye = ray.position;
+		const Vector c = position;
+		const float R = r;
+
+		// forrás: diasor
+		// a1*t^2+a2*t+a3=0
+		float a1 = v*v;
+		float a2 = 2 * ((eye - c)*v);
+		float a3 = ((eye - c)*(eye - c)) - pow(R, 2);
+		if (pow(a2, 2) - 4 * a1*a3 > 0) {
+			float t1 = (-a2 + sqrt(pow(a2, 2) - 4 * a1*a3)) / (2 * a1);
+			float t2 = (-a2 - sqrt(pow(a2, 2) - 4 * a1*a3)) / (2 * a1);
+			float t;
+			if (t1 > 0 && t2 > 0) {
+				t = min(t1, t2);
+			}
+			else {
+				t = max(t1, t2);
+			}
+			return Hit(t, eye + v*t, eye + v*t - c, v*(-t));
+		}
+		else {
+			return Hit(-1);
+		}
+	}
+};
+
+class Camera {
+	const Vector position;
+	const Vector lookat;
+	const Vector up;
+	const Vector right;
+	// The virtual world: single quad
+	FullScreenTexturedQuad fullScreenTexturedQuad;
+
+	vec3* background;	// The image, which stores the ray tracing result
+public:
+	Camera(Vector position, Vector lookat, Vector up, Vector right):position(position),lookat(lookat),up(up),right(right) {
+		background = new vec3[windowWidth * windowHeight];
+	}
+
+	void render(const Intersectable& object) {
+		// Ray tracing fills the image called background
+		for (int x = 0; x < windowWidth; x++) {
+			for (int y = 0; y < windowHeight; y++) {
+				Vector _lookat = lookat;
+				Vector _right = right*(x - windowWidth / 2.0) / (windowWidth / 2.0);
+				Vector _up = up*(y - windowHeight / 2.0) / (windowHeight / 2.0);
+				Ray ray(position, (
+					_lookat +
+					_right +
+					_up
+					).normalize());
+				background[y * windowWidth + x] = object.intersect(ray).getColor();
+
+				//background[y * windowWidth + x] = vec3((float)x / windowWidth, (float)y / windowHeight, 0);
+			}
+		}
+		fullScreenTexturedQuad.Create(background);
+	}
+
+	void draw() {
+		fullScreenTexturedQuad.Draw();
+	}
+
+	~Camera() {
+		delete[] background;
 	}
 };
 
 Camera* camera;
-
-// Initialization, create an OpenGL context
+Intersectable* object;
+												// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 
@@ -257,26 +384,32 @@ void onInitialization() {
 	// Connect the fragmentColor to the frame buffer memory
 	glBindFragDataLocation(shaderProgram, 0, "fragmentColor");	// fragmentColor goes to the frame buffer memory
 
-	// program packaging
+																// program packaging
 	glLinkProgram(shaderProgram);
 	checkLinking(shaderProgram);
 	// make this program run
 	glUseProgram(shaderProgram);
 
-	camera = new Camera();
+	camera = new Camera(
+		Vector(0,0,-500),
+		Vector(0,0,1),
+		Vector(0,1,0),
+		Vector(1, 0, 0)
+	);
+	object = new Sphere(Vector(0, 0, 0), 150);
+	camera->render(*object);
+	glutPostRedisplay();
 }
 
 void onExit() {
 	glDeleteProgram(shaderProgram);
+	delete camera;
 	printf("exit");
 }
 
 // Window has become invalid: Redraw
 void onDisplay() {
-	glClearColor(0, 0, 0, 0);							// background color 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // clear the screen
-
-	camera->Draw();
+	camera->draw();
 	glutSwapBuffers();									// exchange the two buffers
 }
 
@@ -293,9 +426,6 @@ void onKeyboardUp(unsigned char key, int pX, int pY) {
 // Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
 	if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {  // GLUT_LEFT_BUTTON / GLUT_RIGHT_BUTTON and GLUT_DOWN / GLUT_UP
-		float cX = 2.0f * pX / windowWidth - 1;	// flip y axis
-		float cY = 1.0f - 2.0f * pY / windowHeight;
-		glutPostRedisplay();     // redraw
 	}
 }
 
@@ -306,12 +436,7 @@ void onMouseMotion(int pX, int pY) {
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	long time = glutGet(GLUT_ELAPSED_TIME); // elapsed time since the start of the program
-	float sec = time / 1000.0f;				// convert msec to sec
-	glutPostRedisplay();					// redraw the scene
 }
-
-//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// Do not touch the code below this line
 
 int main(int argc, char * argv[]) {
 	glutInit(&argc, argv);
@@ -321,7 +446,7 @@ int main(int argc, char * argv[]) {
 	glutInitWindowSize(windowWidth, windowHeight);				// Application window is initially of resolution 600x600
 	glutInitWindowPosition(100, 100);							// Relative location of the application window
 #if defined(__APPLE__)
-	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH | GLUT_3_3_CORE_PROFILE);  // 8 bit R,G,B,A + double buffer + depth buffer
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH | GLUT_3_2_CORE_PROFILE);  // 8 bit R,G,B,A + double buffer + depth buffer
 #else
 	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #endif
@@ -353,4 +478,3 @@ int main(int argc, char * argv[]) {
 	onExit();
 	return 1;
 }
-
