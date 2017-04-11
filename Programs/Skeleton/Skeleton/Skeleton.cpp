@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <vector>
 
 #if defined(__APPLE__)
 #include <GLUT/GLUT.h>
@@ -235,7 +236,7 @@ class DotLight : public Light {
 	const float range;
 	const vec3 color;
 public:
-	DotLight(const Vector& position, const float& range = 1000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
+	DotLight(const Vector& position, const float& range = 2000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
 	Vector getDirection(const Vector& to) const {
 		return (position - to).normalize();
 	}
@@ -247,15 +248,15 @@ public:
 DotLight dotLight(Vector(500, 500, -500));
 float ambient = 0.1;
 
-class Hit {
+struct Hit {
 	const Vector position;
 	const Vector normal;
 	const Vector rayDir;
 	const float t;
-public:
 	Hit(float t, const Vector position = vec4(), const Vector normal = vec4(), const Vector rayDir = vec4())
 		:position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t) {
 	}
+
 	const vec3 getColor() const {
 		if (t > 0) {
 			Vector lightDir = dotLight.getDirection(position);
@@ -325,7 +326,7 @@ public:
 		background = new vec3[windowWidth * windowHeight];
 	}
 
-	void render(const Intersectable& object) {
+	void render(const std::vector<Intersectable*>& objects) {
 		// Ray tracing fills the image called background
 		for (int x = 0; x < windowWidth; x++) {
 			for (int y = 0; y < windowHeight; y++) {
@@ -337,12 +338,33 @@ public:
 					_right +
 					_up
 					).normalize());
-				background[y * windowWidth + x] = object.intersect(ray).getColor();
+
+				std::vector<Hit> hits;
+				for (std::vector<Intersectable*>::const_iterator object = objects.begin(); object != objects.end(); object++) {
+					hits.push_back((*object)->intersect(ray));
+				}
+
+				const Hit bestHit = getBestHit(hits);
+				background[y * windowWidth + x] = bestHit.getColor();
+				//background[y * windowWidth + x] = object.intersect(ray).getColor();
 
 				//background[y * windowWidth + x] = vec3((float)x / windowWidth, (float)y / windowHeight, 0);
 			}
 		}
 		fullScreenTexturedQuad.Create(background);
+	}
+
+	const Hit& getBestHit(const std::vector<Hit>& hits) const {
+		const Hit* bestHit = &hits[0];
+		for (std::vector<Hit>::const_iterator hit = hits.begin(); hit != hits.end(); hit++) {
+			if (bestHit->t == -1 && (*hit).t > 0) {
+				int i = 0;
+			}
+			if ((*hit).t > 0 && ((*hit).t < bestHit->t || bestHit->t < 0)) {
+				bestHit = &(*hit);
+			}
+		}
+		return *bestHit;
 	}
 
 	void draw() {
@@ -355,7 +377,8 @@ public:
 };
 
 Camera* camera;
-Intersectable* object;
+std::vector<Intersectable*> objects;
+
 												// Initialization, create an OpenGL context
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
@@ -404,8 +427,9 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	object = new Sphere(Vector(0, 0, 0), 100);
-	camera->render(*object);
+	objects.push_back(new Sphere(Vector(0, 0, 0), 100));
+	objects.push_back(new Sphere(Vector(150, 0, 0), 100));
+	camera->render(objects);
 	glutPostRedisplay();
 }
 
