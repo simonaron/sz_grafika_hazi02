@@ -236,7 +236,7 @@ class DotLight : public Light {
 	const float range;
 	const vec3 color;
 public:
-	DotLight(const Vector& position, const float& range = 2000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
+	DotLight(const Vector& position, const float& range = 1000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
 	Vector getDirection(const Vector& to) const {
 		return (position - to).normalize();
 	}
@@ -244,9 +244,6 @@ public:
 		return color*max((pow(range, 2)-pow((position - to).length(),2))/pow(range, 2),0);
 	}
 };
-
-DotLight dotLight(Vector(500, 500, -500));
-float ambient = 0.1;
 
 struct Hit {
 	const Vector position;
@@ -257,14 +254,18 @@ struct Hit {
 		:position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t) {
 	}
 
-	const vec3 getColor() const {
+	const vec3 getColor(const std::vector<Light*>& lights) const {
 		if (t > 0) {
-			Vector lightDir = dotLight.getDirection(position);
-			vec3 lightIntensity = dotLight.getIntensity(position);
+			vec3 color(0,0,0); // fény nélkül minden fekete
+			for (std::vector<Light*>::const_iterator light = lights.begin(); light != lights.end(); light++) {
+				Vector lightDir = (*light)->getDirection(position);
+				vec3 lightIntensity = (*light)->getIntensity(position);
 
-			float spekular = pow(max((lightDir + rayDir).normalize()*normal, 0.0), 200);
+				float spekular = pow(max((lightDir + rayDir).normalize()*normal, 0.0), 200);
 
-			return vec3(1,0,0)*lightIntensity*(max((lightDir*normal),0)) + (lightIntensity*spekular);
+				color = color + vec3(1, 0, 0)*lightIntensity*(max((lightDir*normal), 0)) + (lightIntensity*spekular);
+			}
+			return color;
 		}
 		else {
 			return vec3(0, 0, 0);
@@ -326,7 +327,7 @@ public:
 		background = new vec3[windowWidth * windowHeight];
 	}
 
-	void render(const std::vector<Intersectable*>& objects) {
+	void render(const std::vector<Intersectable*>& objects, const std::vector<Light*>& lights) {
 		// Ray tracing fills the image called background
 		for (int x = 0; x < windowWidth; x++) {
 			for (int y = 0; y < windowHeight; y++) {
@@ -345,10 +346,7 @@ public:
 				}
 
 				const Hit bestHit = getBestHit(hits);
-				background[y * windowWidth + x] = bestHit.getColor();
-				//background[y * windowWidth + x] = object.intersect(ray).getColor();
-
-				//background[y * windowWidth + x] = vec3((float)x / windowWidth, (float)y / windowHeight, 0);
+				background[y * windowWidth + x] = bestHit.getColor(lights);
 			}
 		}
 		fullScreenTexturedQuad.Create(background);
@@ -378,6 +376,7 @@ public:
 
 Camera* camera;
 std::vector<Intersectable*> objects;
+std::vector<Light*> lights;
 
 												// Initialization, create an OpenGL context
 void onInitialization() {
@@ -427,9 +426,19 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	objects.push_back(new Sphere(Vector(0, 0, 0), 100));
+	objects.push_back(new Sphere(Vector(0, 0, -150), 100));
 	objects.push_back(new Sphere(Vector(150, 0, 0), 100));
-	camera->render(objects);
+	lights.push_back(new DotLight(
+		Vector(0, -300, 0)
+	));
+
+	lights.push_back(new DotLight(
+		Vector(500, 500, -500)
+	));
+	lights.push_back(new DotLight(
+		Vector(500, 500, -250)
+	));
+	camera->render(objects, lights);
 	glutPostRedisplay();
 }
 
