@@ -135,8 +135,7 @@ struct vec4 {
 	}
 };
 
-class Vector {
-public:
+struct Vector {
 	const float x;
 	const float y;
 	const float z;
@@ -218,27 +217,34 @@ public:
 	}
 };
 
-class Ray {
-public:
+struct Ray {
 	const Vector position;
 	const Vector orientation;
 
 	Ray(Vector position, Vector orientation):position(position),orientation(orientation) {}
 };
 
-class DotLight {
-	const Vector position;
+class Light {
 public:
-	DotLight(Vector position):position(position) {}
-	Vector getDirection(Vector to) {
+	virtual Vector getDirection(const Vector& to) const = 0;
+	virtual vec3 getIntensity(const Vector& to) const = 0;
+};
+
+class DotLight : public Light {
+	const Vector position;
+	const float range;
+	const vec3 color;
+public:
+	DotLight(const Vector& position, const float& range = 1000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
+	Vector getDirection(const Vector& to) const {
 		return (position - to).normalize();
 	}
-	float getIntensity(Vector to) {
-		return (400000.0-pow((position - to).length(),2))/400000.0;
+	vec3 getIntensity(const Vector& to) const {
+		return color*max((pow(range, 2)-pow((position - to).length(),2))/pow(range, 2),0);
 	}
 };
 
-DotLight dotLight(Vector(100, 200, -300));
+DotLight dotLight(Vector(500, 500, -500));
 float ambient = 0.1;
 
 class Hit {
@@ -253,9 +259,11 @@ public:
 	const vec3 getColor() const {
 		if (t > 0) {
 			Vector lightDir = dotLight.getDirection(position);
-			float lightIntensity = dotLight.getIntensity(position);
+			vec3 lightIntensity = dotLight.getIntensity(position);
 
-			return vec3(1,1,1)*(ambient + (max((lightDir*normal),0))*lightIntensity);
+			float spekular = pow(max((lightDir + rayDir).normalize()*normal, 0.0), 200);
+
+			return vec3(1,0,0)*lightIntensity*(max((lightDir*normal),0)) + (lightIntensity*spekular);
 		}
 		else {
 			return vec3(0, 0, 0);
@@ -396,7 +404,7 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	object = new Sphere(Vector(0, 0, 0), 150);
+	object = new Sphere(Vector(0, 0, 0), 100);
 	camera->render(*object);
 	glutPostRedisplay();
 }
