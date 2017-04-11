@@ -136,12 +136,14 @@ struct vec4 {
 	}
 };
 
-struct Vector {
+class Vector {
+public:
 	const float x;
 	const float y;
 	const float z;
 	const float w;
-	Vector(float x, float y, float z, float w = 1):x(x/w),y(y/w),z(z/w),w(1) {}
+	Vector(float x, float y, float z, float w = 1) :x(x / w), y(y / w), z(z / w), w(1) {}
+	Vector(const Vector& v2):x(v2.x),y(v2.y),z(v2.z),w(1) {}
 	Vector(vec4 vector):x(vector.v[0]), y(vector.v[1]), z(vector.v[2]), w(vector.v[3]) {}
 	const Vector operator+ (const Vector& v2) const {
 		return Vector(x + v2.x, y + v2.y, z + v2.z, 1);
@@ -227,6 +229,8 @@ struct Ray {
 
 class Light {
 public:
+	const vec3 color;
+	Light(const vec3& color):color(color) {}
 	virtual Vector getDirection(const Vector& to) const = 0;
 	virtual vec3 getIntensity(const Vector& to) const = 0;
 };
@@ -234,9 +238,8 @@ public:
 class DotLight : public Light {
 	const Vector position;
 	const float range;
-	const vec3 color;
 public:
-	DotLight(const Vector& position, const float& range = 1000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), color(color) {}
+	DotLight(const Vector& position, const float& range = 1000.0, const vec3& color = vec3(1,1,1)):position(position), range(range), Light(color) {}
 	Vector getDirection(const Vector& to) const {
 		return (position - to).normalize();
 	}
@@ -245,25 +248,45 @@ public:
 	}
 };
 
+struct Hit;
+class RoughMaterial {
+	const vec3 color;
+	const float shininess;
+public:
+	RoughMaterial(const vec3& color, const float& shininess) :color(color), shininess(shininess) {
+		int i = 0;
+	}
+	const vec3 getColor(const Vector& position, const Vector& normal, const Vector& rayDir, const Light& light) const {
+		Vector lightDir = light.getDirection(position);
+		vec3 lightIntensity = light.getIntensity(position);
+
+		float spekular = pow(max((lightDir + rayDir).normalize()*normal, 0.0), shininess);
+
+		// a spekuláris intenzitása nem függ a távolságtól ???
+		return this->color*lightIntensity*(max((lightDir*normal), 0)) + (lightIntensity*spekular);
+	}
+};
+
 struct Hit {
 	const Vector position;
 	const Vector normal;
 	const Vector rayDir;
+	const RoughMaterial& roughMaterial;
 	const float t;
-	Hit(float t, const Vector position = vec4(), const Vector normal = vec4(), const Vector rayDir = vec4())
-		:position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t) {
+	Hit(
+		float t, const Vector position = vec4(), const Vector normal = vec4(), const Vector rayDir = vec4(), 
+		const RoughMaterial& roughMaterial = RoughMaterial(vec3(), 0)
+	) :position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t), roughMaterial(roughMaterial) {
+		if (t > 0) {
+			int i = 0;
+		}
 	}
 
 	const vec3 getColor(const std::vector<Light*>& lights) const {
 		if (t > 0) {
 			vec3 color(0,0,0); // fény nélkül minden fekete
 			for (std::vector<Light*>::const_iterator light = lights.begin(); light != lights.end(); light++) {
-				Vector lightDir = (*light)->getDirection(position);
-				vec3 lightIntensity = (*light)->getIntensity(position);
-
-				float spekular = pow(max((lightDir + rayDir).normalize()*normal, 0.0), 200);
-
-				color = color + vec3(1, 0, 0)*lightIntensity*(max((lightDir*normal), 0)) + (lightIntensity*spekular);
+				color = color + roughMaterial.getColor(position, normal, rayDir, *(*light));
 			}
 			return color;
 		}
@@ -273,8 +296,12 @@ struct Hit {
 	}
 };
 
+
 class Intersectable {
+protected: // A leszármazottnak látni kell!!!!!
+	const RoughMaterial roughMaterial;
 public:
+	Intersectable(const RoughMaterial& roughMaterial):roughMaterial(roughMaterial) {}
 	virtual const Hit intersect(const Ray& ray) const = 0;
 };
 
@@ -282,7 +309,7 @@ class Sphere : public Intersectable {
 	const Vector position;
 	const float r;
 public:
-	Sphere(Vector position, float r):position(position),r(r) {}
+	Sphere(Vector position, float r, const RoughMaterial& roughMaterial):position(position),r(r),Intersectable(roughMaterial) {}
 
 	const Hit intersect(const Ray& ray) const {
 		const Vector v = ray.orientation;
@@ -305,7 +332,7 @@ public:
 			else {
 				t = max(t1, t2);
 			}
-			return Hit(t, eye + v*t, eye + v*t - c, v*(-t));
+			return Hit(t, eye + v*t, eye + v*t - c, v*(-t), roughMaterial);
 		}
 		else {
 			return Hit(-1);
@@ -426,8 +453,8 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	objects.push_back(new Sphere(Vector(0, 0, -150), 100));
-	objects.push_back(new Sphere(Vector(150, 0, 0), 100));
+	objects.push_back(new Sphere(Vector(0, 0, -150), 100, RoughMaterial(vec3(1,0,0),50)));
+	objects.push_back(new Sphere(Vector(150, 0, 0), 100, RoughMaterial(vec3(0, 1, 0), 200)));
 	lights.push_back(new DotLight(
 		Vector(0, -300, 0)
 	));
