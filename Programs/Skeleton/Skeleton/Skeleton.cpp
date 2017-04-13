@@ -368,7 +368,7 @@ struct Hit {
 				return smoothMaterial->Fresnel(bestHit.rayDir, bestHit.normal)*bestHit.getColor(objects, lights);
 			}
 			else {
-				return vec3(1, 0, 0);
+				return vec3(1, 1, 1);
 			}
 		}
 		else {
@@ -539,8 +539,12 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	objects.push_back(new Sphere(Vector(150, 0, 0), 100, nullptr ,new SmoothMaterial(vec3(0.17,0.35,1.5),vec3(3.1,2.7,1.9))));
-	objects.push_back(new Sphere(Vector(-150, 0, 0), 100, new RoughMaterial(vec3(0, 1, 0), 200), nullptr));
+	objects.push_back(new Sphere(Vector(150, 0, 0), 100,
+		nullptr ,new SmoothMaterial(vec3(0.17,0.35,1.5),vec3(3.1,2.7,1.9))));
+	objects.push_back(new Sphere(Vector(-150, 0, 0), 100,
+		nullptr, new SmoothMaterial(vec3(0.14, 0.16, 0.13), vec3(4.1, 2.3, 3.1))));
+	objects.push_back(new Sphere(Vector(0, 150, 0), 100, 
+		new RoughMaterial(vec3(0.6, 0.6, 0.6), 200), nullptr));
 	lights.push_back(new DotLight(
 		Vector(0, -300, 0)
 	));
