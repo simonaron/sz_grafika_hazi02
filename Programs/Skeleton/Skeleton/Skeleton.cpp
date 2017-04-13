@@ -34,6 +34,7 @@ struct vec3 {
 	vec3(float x0 = 0, float y0 = 0, float z0 = 0) { x = x0; y = y0; z = z0; }
 
 	vec3 operator*(float a) const { return vec3(x * a, y * a, z * a); }
+	vec3 operator/(float a) const { return vec3(x / a, y / a, z / a); }
 
 	vec3 operator+(const vec3& v) const {
 		return vec3(x + v.x, y + v.y, z + v.z);
@@ -41,6 +42,7 @@ struct vec3 {
 	vec3 operator-(const vec3& v) const {
 		return vec3(x - v.x, y - v.y, z - v.z);
 	}
+
 	vec3 operator*(const vec3& v) const {
 		return vec3(x * v.x, y * v.y, z * v.z);
 	}
@@ -224,7 +226,7 @@ struct Ray {
 	const Vector position;
 	const Vector orientation;
 
-	Ray(Vector position, Vector orientation):position(position),orientation(orientation) {}
+	Ray(const Vector& position,const Vector& orientation):position(position),orientation(orientation) {}
 };
 
 class Light {
@@ -267,49 +269,133 @@ public:
 	}
 };
 
+class SmoothMaterial {
+	vec3 F0;
+	float n;
+public:
+	SmoothMaterial(const vec3& n, const vec3& k) {
+		float F0_x = ((n.x - 1)*(n.x - 1) + k.x*k.x) / ((n.x + 1)*(n.x + 1) + k.x*k.x);
+		float F0_y = ((n.y - 1)*(n.y - 1) + k.y*k.y) / ((n.y + 1)*(n.y + 1) + k.y*k.y);
+		float F0_z = ((n.z - 1)*(n.z - 1) + k.z*k.z) / ((n.z + 1)*(n.z + 1) + k.z*k.z);
+		// hegesztés
+		if (n.x == n.y && n.x == n.z) this->n = n.x;
+		F0 = vec3(F0_x, F0_y, F0_z);
+	}
+	const Vector reflect(const Vector& inDir, const Vector& normal) const {
+		return inDir - normal * (normal * inDir) * 2.0f;
+	}
+	const Vector refract(const Vector& inDir, const Vector& normal) const {
+		Vector minusNormal = Vector(0, 0, 0) - normal;
+		float ior = n;
+		float cosa = normal * inDir;
+		if (cosa < 0) {
+			cosa = -cosa; ior = 1 / n; 
+		}
+
+		float disc = 1 - (1 - cosa * cosa) / ior / ior;
+		if (disc < 0) {
+			if (cosa < 0) {
+				return reflect(inDir, minusNormal);
+			}
+			else {
+				return reflect(inDir, normal);
+			}
+		}
+		else {
+			if (cosa < 0) {
+				return inDir / ior + minusNormal * (cosa / ior - sqrt(disc));
+			}
+			else {
+				return inDir / ior + normal * (cosa / ior - sqrt(disc));
+			}
+		}
+	}
+	vec3 Fresnel(const Vector& inDir,const Vector& normal) const {
+		float cosa = fabs(normal* inDir);
+		return F0 + (vec3(1, 1, 1) - F0) * pow(1 - cosa, 5);
+	}
+};
+
+class Intersectable {
+protected: // A leszármazottnak látni kell!!!!!
+	const RoughMaterial* roughMaterial;
+	const SmoothMaterial* smoothMaterial;
+public:
+	Intersectable(const RoughMaterial* roughMaterial, const SmoothMaterial* smoothMaterial)
+		:roughMaterial(roughMaterial), smoothMaterial(smoothMaterial) {
+
+	}
+	virtual const Hit intersect(const Ray& ray) const = 0;
+};
+
 struct Hit {
 	const Vector position;
 	const Vector normal;
 	const Vector rayDir;
-	const RoughMaterial& roughMaterial;
+	const RoughMaterial* roughMaterial;
+	const SmoothMaterial* smoothMaterial;
 	const float t;
 	Hit(
 		float t, const Vector position = vec4(), const Vector normal = vec4(), const Vector rayDir = vec4(), 
-		const RoughMaterial& roughMaterial = RoughMaterial(vec3(), 0)
-	) :position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t), roughMaterial(roughMaterial) {
+		const RoughMaterial* roughMaterial = nullptr,
+		const SmoothMaterial* smoothMaterial = nullptr
+	) :position(position),normal(normal.normalize()),rayDir(rayDir.normalize()),t(t), roughMaterial(roughMaterial), smoothMaterial(smoothMaterial) {
 		if (t > 0) {
 			int i = 0;
 		}
 	}
 
-	const vec3 getColor(const std::vector<Light*>& lights) const {
+	const vec3 getColor(const std::vector<Intersectable*>& objects, 
+		const std::vector<Light*>& lights) const {
 		if (t > 0) {
-			vec3 color(0,0,0); // fény nélkül minden fekete
-			for (std::vector<Light*>::const_iterator light = lights.begin(); light != lights.end(); light++) {
-				color = color + roughMaterial.getColor(position, normal, rayDir, *(*light));
+			if (roughMaterial != nullptr) {
+				vec3 color(0, 0, 0); // fény nélkül minden fekete
+				for (std::vector<Light*>::const_iterator light = lights.begin(); light != lights.end(); light++) {
+					color = color + roughMaterial->getColor(position, normal, rayDir, *(*light));
+				}
+				return color;
 			}
-			return color;
+			else if (smoothMaterial != nullptr) {
+				const Vector newOrientation = smoothMaterial->reflect(Vector(0,0,0)-rayDir, normal);
+				const Ray ray(position + newOrientation*0.01, newOrientation);
+				std::vector<Hit> hits;
+				for (std::vector<Intersectable*>::const_iterator object = objects.begin(); object != objects.end(); object++) {
+					hits.push_back((*object)->intersect(ray));
+				}
+
+				const Hit bestHit = getBestHit(hits);
+				// bestHit.getColor(lights);
+				return smoothMaterial->Fresnel(bestHit.rayDir, bestHit.normal)*bestHit.getColor(objects, lights);
+			}
+			else {
+				return vec3(1, 0, 0);
+			}
 		}
 		else {
-			return vec3(0, 0, 0);
+			return vec3(1, 1, 1);
 		}
 	}
-};
 
-
-class Intersectable {
-protected: // A leszármazottnak látni kell!!!!!
-	const RoughMaterial roughMaterial;
-public:
-	Intersectable(const RoughMaterial& roughMaterial):roughMaterial(roughMaterial) {}
-	virtual const Hit intersect(const Ray& ray) const = 0;
+	const Hit& getBestHit(const std::vector<Hit>& hits) const {
+		const Hit* bestHit = &hits[0];
+		for (std::vector<Hit>::const_iterator hit = hits.begin(); hit != hits.end(); hit++) {
+			if (bestHit->t == -1 && (*hit).t > 0) {
+				int i = 0;
+			}
+			if ((*hit).t > 0 && ((*hit).t < bestHit->t || bestHit->t < 0)) {
+				bestHit = &(*hit);
+			}
+		}
+		return *bestHit;
+	}
 };
 
 class Sphere : public Intersectable {
 	const Vector position;
 	const float r;
 public:
-	Sphere(Vector position, float r, const RoughMaterial& roughMaterial):position(position),r(r),Intersectable(roughMaterial) {}
+	Sphere(Vector position, float r, const RoughMaterial* roughMaterial, const SmoothMaterial* smoothMaterial)
+		:position(position),r(r),Intersectable(roughMaterial, smoothMaterial) {}
 
 	const Hit intersect(const Ray& ray) const {
 		const Vector v = ray.orientation;
@@ -332,7 +418,7 @@ public:
 			else {
 				t = max(t1, t2);
 			}
-			return Hit(t, eye + v*t, eye + v*t - c, v*(-t), roughMaterial);
+			return Hit(t, eye + v*t, eye + v*t - c, v*(-t), roughMaterial, smoothMaterial);
 		}
 		else {
 			return Hit(-1);
@@ -373,7 +459,7 @@ public:
 				}
 
 				const Hit bestHit = getBestHit(hits);
-				background[y * windowWidth + x] = bestHit.getColor(lights);
+				background[y * windowWidth + x] = bestHit.getColor(objects, lights);
 			}
 		}
 		fullScreenTexturedQuad.Create(background);
@@ -453,8 +539,8 @@ void onInitialization() {
 		Vector(0,1,0),
 		Vector(1, 0, 0)
 	);
-	objects.push_back(new Sphere(Vector(0, 0, -150), 100, RoughMaterial(vec3(1,0,0),50)));
-	objects.push_back(new Sphere(Vector(150, 0, 0), 100, RoughMaterial(vec3(0, 1, 0), 200)));
+	objects.push_back(new Sphere(Vector(150, 0, 0), 100, nullptr ,new SmoothMaterial(vec3(0.17,0.35,1.5),vec3(3.1,2.7,1.9))));
+	objects.push_back(new Sphere(Vector(-150, 0, 0), 100, new RoughMaterial(vec3(0, 1, 0), 200), nullptr));
 	lights.push_back(new DotLight(
 		Vector(0, -300, 0)
 	));
